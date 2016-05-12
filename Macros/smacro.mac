@@ -1,0 +1,335 @@
+; ****************************************************************************************
+; ***************************** СПРАВКА ПО SIMPLEMACRO V0.2 ******************************
+; ****************************************************************************************
+; * Простейшие макросы, без которых работа в ассемблере представляется худшим адом       *
+; * из всех существующих. Автору уж точно.                                               * 
+; * (Макросы prologue и epilogue закоментированны, потому что последующие полностью      *
+; * повторяют их функционал и логичнее встраиваются в код)                               *
+; *                                                                                      *
+; * По сравнению с первой версией сделана пара улучшений для увеличения читабельности.   *
+; *                                                                                      *
+; * multipush <arg>[, <arg>[, ...]]                                                      *
+; *     Множественный push. Кладёт аргументы в стек обратным порядком следования.        *
+; *     multipush eax, ecx даст:                                                         *
+; *         push ecx                                                                     *
+; *         push eax                                                                     *
+; *                                                                                      *
+; * multipop <arg>[, <arg>[, ...]]                                                       *
+; *     Множественный pop. Достаёт агрументы из стека в прямом порядке следования.       *
+; *     multipop eax, ecx даст:                                                          *
+; *         pop eax                                                                      *
+; *         pop ecx                                                                      *
+; *                                                                                      *
+; * procedure <pname>                                                                    *
+; *     Пролог процедуры. Объявляет процедуру с именем <pname>.                          *
+; *                                                                                      *
+; * procedure <pname>, <arg>[, <arg>[, ...]]                                             *
+; *     Пролог процедуры. Объявляет процедуру с именем <pname> и объявляет               *
+; *	    аргументы <arg>... в стеке.                                                      *
+; *     Обращатся к аргументам можно либо как %$name, либо как v(name).                  *
+; *                                                                                      *
+; * endproc                                                                              *
+; *     Эпилог процедуры.                                                                *
+; *                                                                                      *
+; * pcall <pname>[, <arg>[, ...]]                                                        * 
+; *     Вызывает процедуру <pname> с аргументами <arg>, ...                              *
+; *     Сохраняет eax, ecx, edx; аргументы в стек запихиваются обратным порядком.        * 
+; *                                                                                      *
+; * fcall <retv>, <pname>[, <arg>[, ...]]                                                * 
+; *     Полностью аналогичен предыдущему, но предполагает, что в eax будет лежать        *
+; *     результат, возвращаемый процедурой. fcall сохраняет его в <retv>.                *
+; *                                                                                      *
+; * let <arg>[, <arg>[, ...]]                                                            *
+; *     Объявляет локальные переменные <arg>...                                          *
+; *     Обращение к локальным переменным эквивалентно обращению к памяти с жёстко        *
+; *     заданным размером в 4 байта. Например dword [ebp-8].                             *
+; *     Обращение делается аналогично обращению к аргументам процедуры.                  *
+; *     ПРИМЕЧАНИЕ: Нельзя использовать без установленного стекового фрейма, т.е. ebp.   *
+; *                                                                                      *
+; * do ... while <op1>, <cond>, <op2>                                                    * 
+; *     Цикл с постпроверкой, аналогичный do...while в языке С.                          *
+; *     Выполняется, пока истинно условие <cond>.                                        *
+; *                                                                                      *
+; * while <op1>, <cond>, <op2> ... end                                                   * 
+; *     Цикл с предпроверкой такой же как и выше. Тоже имеет аналог в Си.                *
+; *                                                                                      *
+; * for <edge> ... end                                                                   * 
+; * for <counter>, <edge> ... end                                                        *
+; * for <counter>, <init>, <edge>[, <step>] ... end                                      *
+; *     Четыре формы цикла for для 1-4 параметров. Если параметр один, то это количество *
+; *     повторов. Если параметров два, то это счётчик (регистр или память) и его         *
+; *     финальное значение (то же самое кол-во повторений). Если же их три, то вторым    *
+; *     становится начальное значение, а финальное становиться третьим. При четырёх      *
+; *     параметрах добавляется шаг - он является четвёртым параметром.                   *
+; *     Любой неуказанный параметр устанавливается по умолчанию.                         *
+; *     Параметры по умолчанию:                                                          * 
+; *         - Счётчик - ecx                                                              * 
+; *         - Начальное значение - 0                                                     *
+; *         - Шаг - 1                                                                    *
+; *     ПРИМЕЧАНИЕ: с первой формой for нельзя использовать ecx как <edge> by design.    *
+; *                                                                                      *
+; * repeat ... until <op1>, <cond>, <op2>                                                * 
+; *     Цикл с постпроверкой. Выполнение прекратится, когда условие <cond> впервые       *
+; *     станет истинным.                                                                 *
+; *                                                                                      *
+; * if <op1>, <cond>, <op2> ... [else ...] endif                                         *
+; *     Стандартный условный оператор. НЕ расширяется до if...elseif...else...endif.     *
+; *     Ветка if выполняется если <cond> истинно, иначе ветка else.                      *
+; *                                                                                      *
+; * if <cond> ... [else ...] endif                                                       *
+; *     Условный оператор, работающий на основе переменной flags. Практически идентичен  *
+; *     предыдущему, но проверка условия с помощью cmp возлагается на пользователя.      *
+; ****************************************************************************************
+
+%ifndef __SIMPLEMACRO_MAC__
+%define __SIMPLEMACRO_MAC__
+
+%macro multipush 1-*
+	%rotate -1
+	%rep %0
+		push %1
+		%rotate -1
+	%endrep
+%endmacro
+
+%macro multipop 1-*
+	%rep %0
+		pop %1
+		%rotate 1
+	%endrep
+%endmacro
+
+;%macro prologue 0
+;	push ebp
+;	mov ebp, esp
+;%endmacro
+;
+;%macro prologue 1
+;	push ebp
+;	mov ebp, esp
+;	sub esp, %1*4
+;%endmacro
+;
+;%macro epilogue 0
+;	mov esp, ebp
+;	pop ebp
+;	ret
+;%endmacro
+
+;; Объявление процедуры без аргументов
+%macro procedure 1
+%1:
+	push ebp
+	mov ebp, esp
+	%push proc
+	%define %$procname %1
+%endmacro
+
+;; А тут будут аргументы
+%macro procedure 2-*
+%1:
+	push ebp
+	mov ebp, esp
+	%push proc
+	%define %$procname %1
+	
+	%rotate 1
+	%assign i 2
+	%rep %0-1
+		%xdefine %$%{1} dword [ebp+4*i]
+		%assign i i+1
+		%rotate 1
+	%endrep
+%endmacro
+
+%macro endproc 0
+	%ifnctx proc
+		%error "Mismatched 'procedure'/'endproc'"
+	%endif
+	%pop
+	mov esp, ebp
+	pop ebp
+	ret
+%endmacro
+
+%macro fcall 2-*
+	%ifnidn %1,eax
+		push eax
+	%endif
+	
+	push ecx
+	push edx
+	
+	%rep %0-2
+		%rotate -1
+		push %1
+	%endrep	
+	%rotate -1
+	call %1
+	add esp, (%0-2)*4
+
+	pop edx
+	pop ecx
+	%rotate -1
+	%ifnidn %1,eax
+		mov %1, eax
+		pop eax
+	%endif
+%endmacro
+
+%macro pcall 1-*
+	push eax
+	push ecx
+	push edx
+	%rep %0-1
+		%rotate -1
+		push %1
+	%endrep	
+	%rotate -1
+	call %1
+	add esp, (%0-1)*4
+
+	pop edx
+	pop ecx
+	pop eax
+%endmacro
+
+;; Область видимости для локальных переменных
+;; Этот макрос отменяется end'ом
+;; Только для инициализированного стека
+%macro let 1-*
+	%ifnctx let_end
+		%push let_end
+		%assign %$curr 1
+	%else
+		%push let_end
+	%endif
+	%assign %$num_of_vars %0
+	sub esp, %0*4
+	%rep %0
+		%xdefine %$%{1} dword [ebp-4*%$curr]
+		%assign %$curr %$curr+1
+		%rotate 1
+	%endrep
+%endmacro
+
+;; Макрос для доступа к аргументам и переменным
+;; Просто для поддержания абстракции
+%define v(name) %$ %+ name
+
+; if-else-end macros (Simple condition)
+%macro if 1
+	%push if
+	j%-1 %$ifnot
+%endmacro
+
+%macro if 3
+	%push if
+	cmp %1, %3
+	j%-2 %$ifnot
+%endmacro
+
+%macro else 0
+	%ifctx if
+		%repl else
+		jmp %$ifend
+		%$ifnot:
+	%else
+		%error "Expect 'if' before 'else'"
+	%endif
+%endmacro
+
+; do-while macros (True condition, Postcheck)
+; while-end macros (True condition, Precheck)
+; for-end marcos (Counter, Postcheck)
+%macro do 0
+	%push do_while
+	%$loop:
+%endmacro
+
+%macro while 3
+	%ifctx do_while
+		cmp %1, %3
+		j%+2 %$loop
+		%pop
+	%else
+		%push while_end
+		%$loop:
+		cmp %1, %3
+		j%-2 %$endloop
+	%endif
+%endmacro
+
+%macro for 1-4
+	%push for_end
+	%if %0 == 1
+		%define %$init 0
+		%define %$edge %1
+		%define %$counter ecx
+		%define %$step 1
+	%elif %0 == 2
+		%define %$init 0
+		%define %$edge %2
+		%define %$counter %1
+		%define %$step 1
+	%elif %0 == 3
+		%define %$init %2
+		%define %$edge %3
+		%define %$counter %1
+		%define %$step 1
+	%elif %0 == 4
+		%define %$init %2
+		%define %$edge %3
+		%define %$counter %1
+		%define %$step %4
+	%endif
+	%if %$init == 0
+		xor %$counter, %$counter
+	%else
+		mov %$counter, %$init
+	%endif
+	%$loop:
+%endmacro
+
+%macro end 0
+	%ifctx if
+		%$ifnot:
+		%pop
+	%elifctx else
+		%$ifend:
+		%pop
+	%elifctx while_end
+		jmp %$loop
+		%$endloop:
+		%pop
+	%elifctx for_end
+		%if %$step == 1
+			inc %$counter
+		%else
+			add %$counter, %$step
+		%endif
+		cmp %$counter, %$edge
+		jb %$loop
+		%pop
+	%elifctx let_end
+		%assign %$curr %$curr-%$num_of_vars
+		add esp, %$num_of_vars*4
+		%pop
+	%else
+		%error "Expect 'if', 'else', 'while', 'for' or 'let' before 'end'"
+	%endif
+%endmacro
+
+; repeat-until macros (False condition, Postcheck)
+%macro repeat 0
+	%push repeat_until
+	%$loop:
+%endmacro
+
+%macro until 3
+	cmp %1, %3
+	j%-2 %$loop
+	%pop
+%endmacro
+
+%endif ; __SIMPLEMACRO_MAC__

@@ -1,0 +1,22 @@
+%ifndef __PROCESS_MAC
+%define __PROCESS_MAC
+
+;;;; Макросы для многопоточной работы
+
+;;; fork <place>
+;; Позволяет форкнуться и кладёт результат в <place>
+%macro fork 1
+	%ifnidn %1,eax
+		push eax
+	%endif
+	
+	mov eax, 2
+	int 0x80
+
+	%ifnidn %1,eax
+		mov %1, eax
+		pop eax
+	%endif
+%endmacro
+
+%endif ; __PROCESS_MAC

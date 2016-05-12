@@ -1,0 +1,75 @@
+%ifndef __IOMACRO_MAC
+%define __IOMACRO_MAC
+
+;;;; Элементарные макросы для ввода/вывода.
+;;; Никакой проверки на порядок записи и коллизии регистров
+;;; Предполагается использование с осторожностью.
+
+%macro exit 0-1
+	%if %0 > 0
+		%ifnidn %1, ebx
+			mov ebx, %1
+		%endif
+	%else
+		mov ebx, 0
+	%endif
+	mov eax, 1
+	int 0x80
+%endmacro
+
+%macro read 2-3 1
+	mov edx, %2
+	mov ecx, %1
+	mov ebx, %3
+	mov eax, 3
+	int 0x80
+%endmacro
+
+%macro write 2-3 1
+	mov edx, %2
+	mov ecx, %1
+	mov ebx, %3
+	mov eax, 4
+	int 0x80
+%endmacro
+
+;;; Три аргумента: имя файла, режим открытия, и если создание файла, то права доступа
+%macro open 1-3 0, 0
+	mov dx, %3
+	mov cx, %2
+	mov ebx, %1
+	mov eax, 5
+	int 0x80
+%endmacro
+
+%macro close 1
+	mov ebx, %1
+	mov eax, 6
+	int 0x80
+%endmacro
+
+struc STAT
+    .st_dev: resd 1
+    .st_ino: resd 1
+    .st_mode: resw 1
+    .st_nlink: resw 1
+    .st_uid: resw 1
+    .st_gid: resw 1
+    .st_rdev: resd 1
+    .st_size: resd 1
+    .st_atime: resd 1
+    .st_mtime: resd 1
+    .st_ctime: resd 1
+    .st_blksize: resd 1
+    .st_blocks: resd 1
+endstruc
+
+;; Два аргумента: дескриптор файла и структура размера 64 байта
+%macro fstat 2
+	mov ecx, %2
+	mov ebx, %1
+	mov eax, 0x6c
+	int 0x80
+%endmacro
+
+%endif ; __IOMACRO_MAC
