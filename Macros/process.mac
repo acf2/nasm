@@ -19,4 +19,27 @@
 	%endif
 %endmacro
 
+;;; waitpid <pid>, <ret_num_addr>
+;; Ждёт завершения процесса с id == <pid>
+%macro waitpid 2
+	%ifnidn %2, ebx
+		%ifnidn %1, ebx
+			mov ebx, %1
+		%endif
+		%ifnidn %2, ecx
+			mov ecx, %2
+		%endif
+	%else
+		%ifnidn %1, ecx
+			mov ecx, %2
+			mov ebx, %1
+		%else
+			xchg ebx, ecx
+		%endif
+	%endif
+	mov eax, 7
+	mov edx, 0
+	int 0x80
+%endmacro
+
 %endif ; __PROCESS_MAC
