@@ -17,7 +17,7 @@
 	int 0x80
 %endmacro
 
-%macro read 2-3 1
+%macro read 2-3 0
 	mov edx, %2
 	mov ecx, %1
 	mov ebx, %3

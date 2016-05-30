@@ -81,8 +81,8 @@
 ; *     предыдущему, но проверка условия с помощью cmp возлагается на пользователя.      *
 ; ****************************************************************************************
 
-%ifndef __SIMPLEMACRO_MAC__
-%define __SIMPLEMACRO_MAC__
+%ifndef __SIMPLEMACRO_MAC
+%define __SIMPLEMACRO_MAC
 
 %macro multipush 1-*
 	%rotate -1
@@ -332,4 +332,4 @@
 	%pop
 %endmacro
 
-%endif ; __SIMPLEMACRO_MAC__
+%endif ; __SIMPLEMACRO_MAC
